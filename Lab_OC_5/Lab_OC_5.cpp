@@ -16,6 +16,8 @@ ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK    Triangles(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK    Ellipses(HWND, UINT, WPARAM, LPARAM);
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
@@ -117,22 +119,82 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 //  ЦЕЛЬ: Обрабатывает сообщения в главном окне.
 //
 //  WM_COMMAND  - обработать меню приложения
+//  WM_CREATE   - создание виртуального окна
 //  WM_PAINT    - Отрисовка главного окна
 //  WM_DESTROY  - отправить сообщение о выходе и вернуться
 //
 //
+HDC memdc; // контекст устройства памяти
+HBITMAP hbit; // растр изображения в окне 
+HBRUSH hbrush; // дескриптор текущей кисти
+HBRUSH hOldbrush; // дескриптор предыдущей кисти
+HPEN hRedPen, hBluePen; // дескрипторы синего и красного перьев
+HPEN hOldpen; // дескриптор предыдущего состояния пера
+int maxX, maxY; // размеры экрана
+
+/* координаты вершин треугольников */
+POINT mp1[3] = { {150, 50}, {50, 150}, {150, 150} }; // 1 трегоульник
+POINT mp2[3] = { {250, 150}, {350, 50}, {450, 150} }; // 2 трегоульник
+COLORREF color = RGB(255, 255, 0);
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    HDC hdc;
+
     switch (message)
     {
+    case WM_CREATE:
+        {
+            maxX = GetSystemMetrics(SM_CXSCREEN);
+            maxY = GetSystemMetrics(SM_CYSCREEN);
+            hdc = GetDC(hWnd);
+            memdc = CreateCompatibleDC(hdc);
+            hbit = CreateCompatibleBitmap(hdc, maxX, maxY);
+
+            /* выбор растрового изображения в контекст устройства памяти */
+            SelectObject(memdc, hbit);
+            PatBlt(memdc, 0, 0, maxX, maxY, PATCOPY);
+
+            /* создание красного и синего перьев */
+            hRedPen = CreatePen(PS_SOLID, 2, RGB(200, 0, 0));
+            hBluePen = CreatePen(PS_SOLID, 2, RGB(0, 0, 255));
+
+            ReleaseDC(hWnd, hdc);
+        }
+        break;
     case WM_COMMAND:
         {
             int wmId = LOWORD(wParam);
             // Разобрать выбор в меню:
             switch (wmId)
             {
+            case IDM_TRIANGES:
+                DialogBox(hInst, MAKEINTRESOURCE(IDD_TRIANGLESBOX), hWnd, Triangles);
             case IDM_ABOUT:
                 DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
+                break;
+            case ID_ELLIPSES:
+                DialogBox(hInst, MAKEINTRESOURCE(IDD_ELLIPSESBOX), hWnd, Ellipses);
+                break;
+            case ID_RECT:
+                PatBlt(memdc, 0, 0, maxX, maxY, PATCOPY);
+                hbrush = CreateSolidBrush(color);
+                hOldbrush = (HBRUSH)SelectObject(memdc, hbrush);
+                hOldpen = (HPEN)SelectObject(memdc, hRedPen);
+                Rectangle(memdc, 50, 50, 200, 200);
+                SelectObject(memdc, hBluePen);
+                RoundRect(memdc, 250, 50, 400, 150, 30, 30);
+                SelectObject(memdc, hOldpen);
+                SelectObject(memdc, hOldbrush);
+                DeleteObject(hbrush);
+                Polygon(memdc, (const POINT*)3, (int)mp1);
+                InvalidateRect(hWnd, NULL, 0);
+                break;
+            case ID_RED:
+                color = RGB(250, 0, 0);
+                break;
+            case ID_BLACK:
+                color = RGB(0, 0, 0);
                 break;
             case IDM_EXIT:
                 DestroyWindow(hWnd);
@@ -145,12 +207,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_PAINT:
         {
             PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hWnd, &ps);
-            // TODO: Добавьте сюда любой код прорисовки, использующий HDC...
+            hdc = BeginPaint(hWnd, &ps);
+            BitBlt(hdc, 0, 0, maxX, maxY, memdc, 0, 0, SRCCOPY);
             EndPaint(hWnd, &ps);
         }
         break;
     case WM_DESTROY:
+        DeleteObject(hRedPen);
+        DeleteObject(hBluePen);
+        DeleteDC(memdc);
         PostQuitMessage(0);
         break;
     default:
@@ -161,6 +226,46 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 // Обработчик сообщений для окна "О программе".
 INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    UNREFERENCED_PARAMETER(lParam);
+    switch (message)
+    {
+    case WM_INITDIALOG:
+        return (INT_PTR)TRUE;
+
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+        {
+            EndDialog(hDlg, LOWORD(wParam));
+            return (INT_PTR)TRUE;
+        }
+        break;
+    }
+    return (INT_PTR)FALSE;
+}
+
+// Обработчик сообщений для окна "Треугольники"
+INT_PTR CALLBACK Triangles(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    UNREFERENCED_PARAMETER(lParam);
+    switch (message)
+    {
+    case WM_INITDIALOG:
+        return (INT_PTR)TRUE;
+
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+        {
+            EndDialog(hDlg, LOWORD(wParam));
+            return (INT_PTR)TRUE;
+        }
+        break;
+    }
+    return (INT_PTR)FALSE;
+}
+
+// Обработчик сообщений для окна "Эллипсы"
+INT_PTR CALLBACK Ellipses(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
     UNREFERENCED_PARAMETER(lParam);
     switch (message)
